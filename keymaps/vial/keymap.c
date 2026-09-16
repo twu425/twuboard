@@ -70,37 +70,63 @@ bool oled_task_user(void) {
 
 // Callibrate to your joysticks!
 joystick_config_t joystick_axes[JOYSTICK_AXIS_COUNT] = {
-    // Highs and low values for the Y axis have been swapped to invert the axis
-    // (as the joystick is installed upside-down)
-
-    // Left Stick
-    JOYSTICK_AXIS_IN(GP26, 280, 555, 820),  // X
-    JOYSTICK_AXIS_IN(GP27, 880, 563, 210)   // Y
+    JOYSTICK_AXIS_VIRTUAL,
+    JOYSTICK_AXIS_VIRTUAL
 };
 
+#define JOYSTICK_MAX ((1 << (JOYSTICK_AXIS_RESOLUTION - 1)) - 1)
 
-#define RIGHT_X_PIN GP26
-#define RIGHT_Y_PIN GP27
+static int16_t joystick_from_adc(uint16_t value, uint16_t low, uint16_t center, uint16_t high) {
+    int32_t result;
 
-#define RIGHT_X_CENTER 510
-#define RIGHT_Y_CENTER 512
+    if (value < center) {
+        result = ((int32_t)value - center) * JOYSTICK_MAX / (center - low);
+    } else {
+        result = ((int32_t)value - center) * JOYSTICK_MAX / (high - center);
+    }
 
+    if (result < -JOYSTICK_MAX) {
+        result = -JOYSTICK_MAX;
+    } else if (result > JOYSTICK_MAX) {
+        result = JOYSTICK_MAX;
+    }
+
+    return (int16_t)result;
+}
+
+// Pins are shared across both halves
+#define X_PIN GP26
+#define Y_PIN GP27
+
+#define RIGHT_X_REST 510
+#define RIGHT_Y_REST 512
 #define RIGHT_X_DEADZONE 150
 #define RIGHT_Y_DEADZONE 150
 
 static uint8_t right_numpad_key = KC_NO;
 
 void matrix_scan_user(void) {
+
+    if (is_keyboard_left()) {
+        joystick_set_axis(
+            0, joystick_from_adc(analogReadPin(X_PIN), 280, 555, 810)
+        );
+        joystick_set_axis(
+            1, joystick_from_adc(analogReadPin(Y_PIN), 860, 563, 210)
+        );
+        return;
+    }
+
     if (!is_keyboard_left()) {
 
-        uint16_t x = analogReadPin(RIGHT_X_PIN);
-        uint16_t y = analogReadPin(RIGHT_Y_PIN);
+        uint16_t x = analogReadPin(X_PIN);
+        uint16_t y = analogReadPin(Y_PIN);
 
-        bool left  = x < (RIGHT_X_CENTER - RIGHT_X_DEADZONE);
-        bool right = x > (RIGHT_X_CENTER + RIGHT_X_DEADZONE);
+        bool left  = x < (RIGHT_X_REST - RIGHT_X_DEADZONE);
+        bool right = x > (RIGHT_X_REST + RIGHT_X_DEADZONE);
 
-        bool up    = y > (RIGHT_Y_CENTER + RIGHT_Y_DEADZONE);
-        bool down  = y < (RIGHT_Y_CENTER - RIGHT_Y_DEADZONE);
+        bool up    = y > (RIGHT_Y_REST + RIGHT_Y_DEADZONE);
+        bool down  = y < (RIGHT_Y_REST - RIGHT_Y_DEADZONE);
 
         uint8_t new_key = KC_NO;
 
